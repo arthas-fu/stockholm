@@ -8,6 +8,8 @@ import io
 import os
 import csv
 import re
+import urllib
+import oauth2 as oauth
 from pymongo import MongoClient
 from multiprocessing.dummy import Pool as ThreadPool
 from functools import partial
@@ -46,14 +48,15 @@ class Stockholm(object):
         ## for getting quote symbols
         self.all_quotes_url = 'http://money.finance.sina.com.cn/d/api/openapi_proxy.php'
         ## for loading quote data
-        self.yql_url = 'http://query.yahooapis.com/v1/public/yql'
+        ##self.yql_url = 'http://query.yahooapis.com/v1/yql'
+        self.yql_url = 'http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData'
         ## export file name
         self.export_file_name = 'stockholm_export'
 
-        self.index_array = ['000001.SS', '399001.SZ', '000300.SS']
-        self.sh000001 = {'Symbol': '000001.SS', 'Name': '上证指数'}
-        self.sz399001 = {'Symbol': '399001.SZ', 'Name': '深证成指'}
-        self.sh000300 = {'Symbol': '000300.SS', 'Name': '沪深300'}
+        self.index_array = [] ##['ss000001', 'sz399001', 'ss000300']
+        self.sh000001 = {'Symbol': 'ss000001', 'Name': '上证指数'}
+        self.sz399001 = {'Symbol': 'sz399001', 'Name': '深证成指'}
+        self.sh000300 = {'Symbol': 'ss000300', 'Name': '沪深300'}
         ## self.sz399005 = {'Symbol': '399005.SZ', 'Name': '中小板指'}
         ## self.sz399006 = {'Symbol': '399006.SZ', 'Name': '创业板指'}
 
@@ -62,6 +65,21 @@ class Stockholm(object):
         self.mongo_port = 27017
         self.database_name = args.db_name
         self.collection_name = 'testing_method'
+
+        ##oauth
+        # key and secert granted by the service provider for this consumer application
+        self.consumer_key = "dj0yJmk9dHVZVXlWVEhDTHo0JmQ9WVdrOWIybzNXV0ZoTm5VbWNHbzlNQS0tJnM9Y29uc3VtZXJzZWNyZXQmeD1kNA--"
+
+        self.consumer_secret = "0761e29c088c1d88346beb467d0b47482566eab8"
+
+        # oauth's urls of Yahoo!
+        self.request_token_url = 'https://api.login.yahoo.com/oauth/v2/get_request_token'
+        self.access_token_url = 'https://api.login.yahoo.com/oauth/v2/request_auth'
+        self.authorize_url = 'https://api.login.yahoo.com/oauth/v2/get_token'
+
+        self.consumer = oauth.Consumer(self.consumer_key, self.consumer_secret)
+        self.client = oauth.Client(self.consumer)
+        ##self.get_oauth_client()
         
     def get_columns(self, quote):
         columns = []
@@ -169,9 +187,9 @@ class Stockholm(object):
 
         all_quotes = []
         
-        all_quotes.append(self.sh000001)
-        all_quotes.append(self.sz399001)
-        all_quotes.append(self.sh000300)
+        ##all_quotes.append(self.sh000001)
+        ##all_quotes.append(self.sz399001)
+        ##all_quotes.append(self.sh000300)
         ## all_quotes.append(self.sz399005)
         ## all_quotes.append(self.sz399006)
         
@@ -188,10 +206,10 @@ class Stockholm(object):
                     code = item[0]
                     name = item[2]
                     ## convert quote code
-                    if(code.find('sh') > -1):
-                        code = code[2:] + '.SS'
-                    elif(code.find('sz') > -1):
-                        code = code[2:] + '.SZ'
+                    ##if(code.find('sh') > -1):
+                    ##    code = code[2:] + '.SS'
+                    ##elif(code.find('sz') > -1):
+                    ##    code = code[2:] + '.SZ'
                     ## convert quote code end
                     quote['Symbol'] = code
                     quote['Name'] = name
@@ -257,17 +275,32 @@ class Stockholm(object):
         
         start = timeit.default_timer()
 
-        if(quote is not None and quote['Symbol'] is not None):        
-            yquery = 'select * from yahoo.finance.historicaldata where symbol = "' + quote['Symbol'].upper() + '" and startDate = "' + start_date + '" and endDate = "' + end_date + '"'
-            r_params = {'q': yquery, 'format': 'json', 'env': 'http://datatables.org/alltables.env'}
+        if(quote is not None and quote['Symbol'] is not None):
+            ##yquery = self.yql_url + '?q=show tables'
+            ##yquery = 'select * from yahoo.finance.historicaldata where symbol = "' + quote['Symbol'].upper() + '" and startDate = "' + start_date + '" and endDate = "' + end_date + '"'
+
+            ##body = urllib.parse.urlencode(dict(q=yquery,env='http://datatables.org/alltables.env'))
+            r_params = {'symbol': quote['Symbol'], 'scale': '240', 'startdate': start_date, 'enddate': end_date, 'ma': 'no'}
             try:
                 r = requests.get(self.yql_url, params=r_params)
+                ##r, xml = self.client.request(self.yql_url,"POST",body)
                 ## print(r.url)
                 ## print(r.text)
-                rjson = r.json()
-                quote_data = rjson['query']['results']['quote']
-                quote_data.reverse()
-                quote['Data'] = quote_data
+                ##rjson = r.text.json()
+                ##quote_data = json.dumps(r.text)
+                ##quote_data = rjson['query']['results']['quote']
+                ##quote_data.reverse()
+
+                s_l = list(r.text)
+                l = []
+                for i in range(1,len(s_l) - 1):
+                    l.append(s_l[i])
+                    if s_l[i] == '{' or (s_l[i] == ',' and s_l[i + 1] != '{'):
+                        l.append('"')
+                    if s_l[i + 1] == ':':
+                        l.append('"')
+
+                quote['Data'] = eval("".join(l))
                 if(not is_retry):
                     counter.append(1)          
                 
@@ -316,15 +349,15 @@ class Stockholm(object):
                 try:
                     temp_data = []
                     for quote_data in quote['Data']:
-                        if(quote_data['Volume'] != '000' or quote_data['Symbol'] in self.index_array):
+                        if(quote_data['volume'] != '000' or quote_data['symbol'] in self.index_array):
                             d = {}
-                            d['Open'] = float(quote_data['Open'])
+                            d['Open'] = float(quote_data['open'])
                             ## d['Adj_Close'] = float(quote_data['Adj_Close'])
-                            d['Close'] = float(quote_data['Close'])
-                            d['High'] = float(quote_data['High'])
-                            d['Low'] = float(quote_data['Low'])
-                            d['Volume'] = int(quote_data['Volume'])
-                            d['Date'] = quote_data['Date']
+                            d['Close'] = float(quote_data['close'])
+                            d['High'] = float(quote_data['high'])
+                            d['Low'] = float(quote_data['low'])
+                            d['Volume'] = int(quote_data['volume'])
+                            d['Date'] = quote_data['day']
                             temp_data.append(d)
                     quote['Data'] = temp_data
                 except KeyError as e:
@@ -648,6 +681,68 @@ class Stockholm(object):
                 res = self.profit_test(selected_quotes, date)
                 self.data_export(res, output_types, 'result_' + date)
 
+    def get_oauth_client(self):
+
+        body = urllib.parse.urlencode(dict(oauth_callback='oob'))
+
+        # Step 1: Get a request token. This is a temporary token that is used for
+        # having the user authorize an access token and to sign the request to obtain
+        # said access token
+
+        resp, content = self.client.request(self.request_token_url, "POST", body=body)
+        if resp['status'] != '200':
+            raise Exception("Invalid response %s. %s" % (resp['status'], content))
+
+        request_token = dict(urllib.parse.parse_qsl(bytes.decode(content)))
+
+        print("Request Token")
+        print("    - oauth_token        = %s" %(request_token['oauth_token']))
+        print("    - oauth_token_secret = %s" %(request_token['oauth_token_secret']))
+        print
+
+        print("Go to the following link in your browser:")
+        print("%s?oauth_token=%s" %(self.access_token_url, request_token['oauth_token']))
+        print
+
+        accepted = 'n'
+        while accepted.lower() == 'n':
+            accepted = input('Have you authorized me? (y/n)')
+        oauth_verifier = input('What is the PIN? ')
+
+        token = oauth.Token(request_token['oauth_token'],
+                            request_token['oauth_token_secret'])
+        token.set_verifier(oauth_verifier)
+        client = oauth.Client(self.consumer, token)
+
+        resp, content = client.request(self.authorize_url, "POST")
+        access_token = dict(urllib.parse.parse_qsl(bytes.decode(content)))
+
+        print("Access Token")
+        print("    - oauth_token        = %s" % (access_token['oauth_token']))
+        print("    - oauth_token_secret = %s" % (access_token['oauth_token_secret']))
+        print
+        print("You may now access protected resources using the access token above")
+        print
+
+        delicious_url = 'http://query.yahooapis.com/v1/yql'
+
+        params = {
+            'oauth_version': '1.0',
+            'oauth_nonce': oauth.generate_nonce(),
+            'oauth_timestamp': int(time.time())
+        }
+
+        token = oauth.Token(key=access_token['oauth_token'], secret=access_token['oauth_token_secret'])
+
+        params['oauth_token'] = token.key
+        params['oauth_consumer_key'] = self.consumer.key
+
+        req = oauth.Request(method='GET', url=delicious_url, parameters=params)
+        signature_method = oauth.SignatureMethod_HMAC_SHA1()
+        req.sign_request(signature_method, self.consumer, token)
+
+        self.client = oauth.Client(self.consumer, token)
+
     def run(self):
         ## output types
         output_types = []
@@ -657,7 +752,7 @@ class Stockholm(object):
             output_types.append("csv")
         elif(self.output_type == "all"):
             output_types = ["json", "csv"]
-            
+
         ## loading stock data
         if(self.reload_data == 'Y'):
             print("Start loading stock data...\n")
