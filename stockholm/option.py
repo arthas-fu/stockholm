@@ -8,8 +8,8 @@ def get_date_str(offset):
     return date_str
 
 _default = dict(
-    reload_data = 'Y',
-    gen_portfolio = 'N',
+    reload_data = 'N',
+    gen_portfolio = 'Y',
     output_type = 'json',
     charset = 'utf-8',
     test_date_range = 60,

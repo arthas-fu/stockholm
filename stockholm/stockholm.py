@@ -292,19 +292,22 @@ class Stockholm(object):
                 ##quote_data.reverse()
 
                 s_l = list(r.text)
-                l = []
-                for i in range(1,len(s_l) - 1):
-                    l.append(s_l[i])
+                l_s = []
+                l_s.append('[')
+                for i in range(1, len(s_l) - 1):
+                    l_s.append(s_l[i])
                     if s_l[i] == '{' or (s_l[i] == ',' and s_l[i + 1] != '{'):
-                        l.append('"')
+                        l_s.append('"')
                     if s_l[i + 1] == ':':
-                        l.append('"')
+                        l_s.append('"')
+                l_s.append(']')
 
-                quote['Data'] = eval("".join(l))
+                quote['Data'] = eval("".join((l_s)))
                 if(not is_retry):
                     counter.append(1)          
                 
             except:
+                print(e)
                 print("Error: Failed to load stock data... " + quote['Symbol'] + "/" + quote['Name'] + "\n")
                 if(not is_retry):
                     time.sleep(2)
@@ -381,39 +384,48 @@ class Stockholm(object):
                     last_10_array = []
                     last_20_array = []
                     last_30_array = []
+                    last_60_array = []
                     for i, quote_data in enumerate(quote['Data']):
                         last_5_array.append(quote_data['Close'])
                         last_10_array.append(quote_data['Close'])
                         last_20_array.append(quote_data['Close'])
                         last_30_array.append(quote_data['Close'])
+                        last_60_array.append(quote_data['Close'])
                         quote_data['MA_5'] = None
                         quote_data['MA_10'] = None
                         quote_data['MA_20'] = None
                         quote_data['MA_30'] = None
+                        quote_data['MA_60'] = None
                         
                         if(i < 4):
                             continue
-                        if(len(last_5_array) == 5):
+                        if(len(last_5_array) == 6):
                             last_5_array.pop(0)
                         quote_data['MA_5'] = self.get_MA(last_5_array)
                         
                         if(i < 9):
                             continue
-                        if(len(last_10_array) == 10):
+                        if(len(last_10_array) == 11):
                             last_10_array.pop(0)
                         quote_data['MA_10'] = self.get_MA(last_10_array)
                         
                         if(i < 19):
                             continue
-                        if(len(last_20_array) == 20):
+                        if(len(last_20_array) == 21):
                             last_20_array.pop(0)
                         quote_data['MA_20'] = self.get_MA(last_20_array)
                         
                         if(i < 29):
                             continue
-                        if(len(last_30_array) == 30):
+                        if(len(last_30_array) == 31):
                             last_30_array.pop(0)
                         quote_data['MA_30'] = self.get_MA(last_30_array)
+
+                        if(i < 59):
+                            continue
+                        if(len(last_60_array) == 61):
+                            last_60_array.pop(0)
+                        quote_data['MA_60'] = self.get_MA(last_60_array)
                         
                         
                 except KeyError as e:
@@ -498,7 +510,8 @@ class Stockholm(object):
         
         is_date_valid = False
         for quote in all_quotes:
-            if(quote['Symbol'] in self.index_array and 'Data' in quote):
+            #if(quote['Symbol'] in self.index_array and 'Data' in quote):
+            if ('Data' in quote):
                 for quote_data in quote['Data']:
                     if(quote_data['Date'] == date):
                         is_date_valid = True
@@ -566,12 +579,12 @@ class Stockholm(object):
         INDEX_idx = 0
 
         for quote in selected_quotes:
-            if(quote['Symbol'] == self.sh000300['Symbol']):
-                INDEX = quote
-                for idx, quote_data in enumerate(quote['Data']):
-                    if(quote_data['Date'] == target_date):
-                        INDEX_idx = idx
-                break
+            #if(quote['Symbol'] == self.sh000300['Symbol']):
+            INDEX = quote
+            for idx, quote_data in enumerate(quote['Data']):
+                if(quote_data['Date'] == target_date):
+                    INDEX_idx = idx
+            break
         
         for quote in selected_quotes:
             target_idx = None
